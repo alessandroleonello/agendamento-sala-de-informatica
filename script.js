@@ -591,8 +591,8 @@ function abrirModalAgendamento(aula) {
 
     ui.modalAulaInfo.innerHTML = `${agendamentoEmEdicao ? 'Editando agendamento' : 'Criando agendamento(s)'} para o dia <strong>${currentDate.toLocaleDateString()}</strong>`;
 
-    // Se estiver editando, bloqueia a seleção. Se for um novo, exibe a grade de checkboxes para as aulas.
-    const checkboxesAulas = agendamentoEmEdicao 
+    // Se estiver editando ou NÃO for admin, bloqueia a seleção múltipla.
+    const checkboxesAulas = (agendamentoEmEdicao || !isAdmin) 
         ? `<div class="form-group">
             <label>Aula</label>
             <input type="text" value="${aula.nome} (${aula.horario})" disabled style="background: #e9ecef; cursor: not-allowed;">
@@ -714,7 +714,7 @@ ui.form.addEventListener('submit', async (e) => {
     btn.textContent = "Salvando...";
 
     let aulasSelecionadasIds = [];
-    if (agendamentoEmEdicao) {
+    if (agendamentoEmEdicao || !isAdmin) {
         aulasSelecionadasIds.push(aulaSelecionada.id);
     } else {
         const checkboxes = document.querySelectorAll('input[name="aulas-multi"]:checked');
