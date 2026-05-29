@@ -42,11 +42,11 @@
         <main>
             <div class="date-navigator">
                 <button id="prev-day-btn" class="nav-btn">&lt;</button>
-                <div style="display: flex; align-items: center; justify-content: center; gap: 10px; flex-grow: 1;">
-                    <h2 id="current-date-display" style="width: auto;">--/--/----</h2>
+                <div style="position: relative; display: flex; align-items: center; justify-content: center; flex-grow: 1; cursor: pointer;" title="Clique para escolher uma data">
+                    <h2 id="current-date-display" style="width: auto; margin: 0; pointer-events: none;">--/--/----</h2>
+                    <input type="date" id="date-picker" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;">
                 </div>
                 <button id="next-day-btn" class="nav-btn">&gt;</button>
-                <input type="date" id="date-picker" class="nav-btn" style="padding: 5px; font-size: 14px; cursor: pointer; height: 35px; border-radius: 5px;">
             </div>
 
             <div style="text-align: center; margin-bottom: 15px;">

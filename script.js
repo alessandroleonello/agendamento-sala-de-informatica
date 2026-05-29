@@ -378,7 +378,7 @@ function formatDateParaBanco(date) {
 
 function atualizarDataUI() {
     const opcoes = { weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit' };
-    ui.dateDisplay.textContent = currentDate.toLocaleDateString('pt-BR', opcoes);
+    ui.dateDisplay.innerHTML = `${currentDate.toLocaleDateString('pt-BR', opcoes)} <span style="font-size: 0.8em; margin-left: 5px;">📅</span>`;
     // Mantém o DatePicker sincronizado com as setinhas de navegação
     ui.datePicker.value = formatDateParaBanco(currentDate);
 }
@@ -393,6 +393,14 @@ ui.btnNextDate.addEventListener('click', () => {
     currentDate.setDate(currentDate.getDate() + 1);
     atualizarDataUI();
     iniciarListenerAgendamentos();
+});
+
+ui.datePicker.addEventListener('click', (e) => {
+    try {
+        if (typeof e.target.showPicker === 'function') {
+            e.target.showPicker(); // Força o calendário a abrir no computador
+        }
+    } catch (error) {}
 });
 
 ui.datePicker.addEventListener('change', (e) => {
