@@ -118,6 +118,7 @@ header {
     font-size: 20px;
     border-radius: 8px;
     box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    touch-action: manipulation; /* Evita o zoom no duplo-toque em celulares */
 }
 
 /* Tabela de Agendamentos */
@@ -185,6 +186,7 @@ button {
     border-radius: 5px;
     cursor: pointer;
     transition: opacity 0.3s, transform 0.1s;
+    touch-action: manipulation; /* Evita o zoom no duplo-toque em celulares */
 }
 
 button:hover:not(:disabled) {
