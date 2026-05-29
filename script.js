@@ -144,8 +144,17 @@ ui.btnPrint.addEventListener('click', () => {
 
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        currentUser = user;
         isAdmin = ADMIN_EMAILS.includes(user.email);
+        
+        // Validação de e-mail institucional
+        const isInstitucional = user.email.endsWith('@prof.educacao.sp.gov.br');
+        if (!isInstitucional && !isAdmin) {
+            alert("Acesso Negado!\n\nEste sistema é de uso restrito.\nPor favor, faça login utilizando o seu e-mail institucional (@prof.educacao.sp.gov.br).");
+            await signOut(auth); // Desloga o usuário imediatamente
+            return; // Interrompe o fluxo e impede o acesso ao sistema
+        }
+
+        currentUser = user;
         
         // Salvar/Atualizar o usuário no banco para aparecer no painel Admin
         try {
