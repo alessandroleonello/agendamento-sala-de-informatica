@@ -1,7 +1,7 @@
 // Importando funções do SDK Modular do Firebase
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getAuth, signInWithRedirect, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, where, deleteDoc, doc, getDoc, setDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, where, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDGoFC1kncfLymg7ioHTNTM88mTeTV-2zA",
@@ -19,6 +19,11 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
+// Força o Firebase a salvar a sessão no armazenamento local do navegador
+setPersistence(auth, browserLocalPersistence).catch((error) => {
+    console.error("Erro ao configurar persistência de login:", error);
+});
+
 /* =========================================================================
    CONFIGURAÇÕES GERAIS E ESTADOS DO SISTEMA
 ========================================================================= */
@@ -34,6 +39,7 @@ let currentDate = new Date();
 let todosAgendamentos = []; // Guarda TODOS os agendamentos na memória
 let agendamentosDoDia = []; // Guarda os agendamentos do dia atual
 let aulaSelecionada = null; // Guarda a aula sendo agendada no modal
+let agendamentoEmEdicao = null; // Guarda o agendamento caso seja edição
 
 /* =========================================================================
    CARREGAMENTO DE CONFIGURAÇÕES DO BANCO
@@ -93,6 +99,7 @@ const ui = {
     btnCloseModal: document.getElementById('close-modal-btn'),
     form: document.getElementById('booking-form'),
     modalAulaInfo: document.getElementById('modal-aula-info'),
+    modalTitle: document.getElementById('modal-title'),
     // Admin Elements
     adminContainer: document.getElementById('admin-container'),
     btnAdminPanel: document.getElementById('btn-admin-panel'),
@@ -103,20 +110,27 @@ const ui = {
     adminCels: document.getElementById('admin-cels'),
     adminSalas: document.getElementById('admin-salas'),
     adminComps: document.getElementById('admin-componentes'),
-    adminAulas: document.getElementById('admin-aulas')
+    adminAulas: document.getElementById('admin-aulas'),
+    adminUsersTbody: document.getElementById('admin-users-tbody')
 };
 
 /* =========================================================================
    AUTENTICAÇÃO
 ========================================================================= */
+
+// Previne que o usuário clique em login antes do Firebase restaurar a sessão do F5
+ui.btnGoogle.textContent = "Verificando sessão...";
+ui.btnGoogle.disabled = true;
+
 ui.btnGoogle.addEventListener('click', async () => {
     const btn = ui.btnGoogle;
-    btn.textContent = "Redirecionando...";
+    btn.textContent = "Aguardando login...";
     btn.disabled = true;
     try {
-        await signInWithRedirect(auth, provider);
+        await signInWithPopup(auth, provider);
     } catch (error) {
         console.error("Erro no login:", error);
+        alert("Falha no login: " + error.message);
         btn.textContent = "Entrar com o Google";
         btn.disabled = false;
     }
@@ -133,6 +147,28 @@ onAuthStateChanged(auth, async (user) => {
         currentUser = user;
         isAdmin = ADMIN_EMAILS.includes(user.email);
         
+        // Salvar/Atualizar o usuário no banco para aparecer no painel Admin
+        try {
+            const userRef = doc(db, "usuarios", user.uid);
+            const userSnap = await getDoc(userRef);
+            if (!userSnap.exists()) {
+                await setDoc(userRef, {
+                    nome: user.displayName,
+                    email: user.email,
+                    foto: user.photoURL,
+                    role: isAdmin ? 'admin' : 'user'
+                });
+            } else {
+                await setDoc(userRef, { nome: user.displayName, foto: user.photoURL }, { merge: true });
+                // Se o usuário foi promovido a admin pelo painel, garante o acesso dele aqui
+                if (userSnap.data().role === 'admin') {
+                    isAdmin = true;
+                }
+            }
+        } catch (error) {
+            console.error("Erro ao sincronizar usuário no banco:", error);
+        }
+
         ui.userName.textContent = user.displayName;
         ui.userPhoto.src = user.photoURL;
         ui.userPhoto.classList.remove('hidden');
@@ -160,6 +196,8 @@ onAuthStateChanged(auth, async (user) => {
         currentUser = null;
         ui.login.classList.remove('hidden');
         ui.home.classList.add('hidden');
+        ui.btnGoogle.textContent = "Entrar com o Google";
+        ui.btnGoogle.disabled = false;
     }
 });
 
@@ -344,6 +382,7 @@ function renderizarTabela() {
             if(ag.celulares > 0) devicesHtml += `<span class="detail-badge">📱 ${ag.celulares} Cel</span>`;
             
             const podeDeletar = isAdmin || ag.uid === currentUser.uid;
+            const btnEdit = podeDeletar ? `<button class="btn-edit" onclick="editarAgendamento('${ag.id}')" title="Editar">✏️</button>` : '';
             const deleteBtn = podeDeletar ? `<button class="btn-delete" onclick="deletarAgendamento('${ag.id}', this)">X</button>` : '';
 
             card.innerHTML = `
@@ -356,7 +395,10 @@ function renderizarTabela() {
                         ${devicesHtml}
                     </div>
                 </div>
-                ${deleteBtn}
+                <div style="display: flex; gap: 5px;">
+                    ${btnEdit}
+                    ${deleteBtn}
+                </div>
             `;
             tdAgendamentos.appendChild(card);
         });
@@ -371,7 +413,10 @@ function renderizarTabela() {
         const btnAdd = document.createElement('button');
         btnAdd.className = 'btn-add';
         btnAdd.innerHTML = '+';
-        btnAdd.onclick = () => abrirModalAgendamento(aula);
+        btnAdd.onclick = () => {
+            agendamentoEmEdicao = null; // Garante que é um NOVO agendamento
+            abrirModalAgendamento(aula);
+        };
         tdAcao.appendChild(btnAdd);
 
         tr.appendChild(tdAcao);
@@ -385,6 +430,8 @@ function renderizarTabela() {
 function abrirModalAgendamento(aula) {
     aulaSelecionada = aula;
     
+    ui.modalTitle.textContent = agendamentoEmEdicao ? "Editar Agendamento" : "Novo Agendamento";
+
     // Cálculos de disponibilidade baseados nos agendamentos JÁ FEITOS para esta aula hoje
     const agsDaAula = agendamentosDoDia.filter(ag => ag.aulaId === aula.id);
     
@@ -393,17 +440,34 @@ function abrirModalAgendamento(aula) {
     let tabsUsados = agsDaAula.reduce((acc, ag) => acc + (ag.tablets || 0), 0);
     let celsUsados = agsDaAula.reduce((acc, ag) => acc + (ag.celulares || 0), 0);
 
+    // Se estiver editando, devolvemos os dispositivos/sala do agendamento atual para a conta de disponibilidade
+    if (agendamentoEmEdicao) {
+        notesUsados -= (agendamentoEmEdicao.notebooks || 0);
+        tabsUsados -= (agendamentoEmEdicao.tablets || 0);
+        celsUsados -= (agendamentoEmEdicao.celulares || 0);
+        makerOcupada = agsDaAula.some(ag => ag.id !== agendamentoEmEdicao.id && ag.salaMaker === true);
+    }
+
     let notesDisp = CONFIG_SISTEMA.dispositivosMax.notebooks - notesUsados;
     let tabsDisp = CONFIG_SISTEMA.dispositivosMax.tablets - tabsUsados;
     let celsDisp = CONFIG_SISTEMA.dispositivosMax.celulares - celsUsados;
 
-    ui.modalAulaInfo.innerHTML = `Agendando para: <strong>${aula.nome} (${aula.horario})</strong> no dia ${currentDate.toLocaleDateString()}`;
+    ui.modalAulaInfo.innerHTML = `${agendamentoEmEdicao ? 'Editando' : 'Agendando'} para: <strong>${aula.nome} (${aula.horario})</strong> no dia ${currentDate.toLocaleDateString()}`;
+
+    const preFixo = agendamentoEmEdicao && agendamentoEmEdicao.isFixo ? 'checked' : '';
+    const preProf = agendamentoEmEdicao ? agendamentoEmEdicao.professorNome : currentUser.displayName;
+    const preSala = agendamentoEmEdicao ? agendamentoEmEdicao.sala : '';
+    const preComp = agendamentoEmEdicao ? agendamentoEmEdicao.componente : '';
+    const preMaker = agendamentoEmEdicao && agendamentoEmEdicao.salaMaker ? 'checked' : '';
+    const preNotes = agendamentoEmEdicao ? (agendamentoEmEdicao.notebooks || 0) : 0;
+    const preTabs = agendamentoEmEdicao ? (agendamentoEmEdicao.tablets || 0) : 0;
+    const preCels = agendamentoEmEdicao ? (agendamentoEmEdicao.celulares || 0) : 0;
 
     // Opção exclusiva para administradores de criar agendamento fixo
     const diaSemanaNome = currentDate.toLocaleDateString('pt-BR', { weekday: 'long' });
     const checkboxFixo = isAdmin ? `
         <div class="checkbox-group" style="background: #fff3cd; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba;">
-            <input type="checkbox" id="input-fixo">
+            <input type="checkbox" id="input-fixo" ${preFixo}>
             <label for="input-fixo" style="color: #856404; font-weight: bold; margin: 0;">
                 🔁 Agendamento Fixo (Toda ${diaSemanaNome})
             </label>
@@ -414,7 +478,7 @@ function abrirModalAgendamento(aula) {
     const inputNomeProfessor = isAdmin ? `
         <div class="form-group">
             <label>Professor(a)</label>
-            <input type="text" id="input-prof-nome" value="${currentUser.displayName}" required>
+            <input type="text" id="input-prof-nome" value="${preProf}" required>
         </div>
     ` : '';
 
@@ -425,19 +489,19 @@ function abrirModalAgendamento(aula) {
             <label>Sala de Destino</label>
             <select id="input-sala" required>
                 <option value="">Selecione a sala...</option>
-                ${CONFIG_SISTEMA.salas.map(s => `<option value="${s}">${s}</option>`).join('')}
+                ${CONFIG_SISTEMA.salas.map(s => `<option value="${s}" ${s === preSala ? 'selected' : ''}>${s}</option>`).join('')}
             </select>
         </div>
         <div class="form-group">
             <label>Componente Curricular</label>
             <select id="input-comp" required>
                 <option value="">Selecione...</option>
-                ${CONFIG_SISTEMA.componentes.map(c => `<option value="${c}">${c}</option>`).join('')}
+                ${CONFIG_SISTEMA.componentes.map(c => `<option value="${c}" ${c === preComp ? 'selected' : ''}>${c}</option>`).join('')}
             </select>
         </div>
         
         <div class="checkbox-group">
-            <input type="checkbox" id="input-maker" ${makerOcupada ? 'disabled' : ''}>
+            <input type="checkbox" id="input-maker" ${preMaker} ${makerOcupada ? 'disabled' : ''}>
             <label for="input-maker">
                 Utilizar Sala Maker ${makerOcupada ? '(Já reservada por outro professor nesta aula)' : ''}
             </label>
@@ -447,21 +511,21 @@ function abrirModalAgendamento(aula) {
         <div class="devices-grid">
             <div class="form-group device-item">
                 <label>Notebooks (Máx: ${notesDisp})</label>
-                <input type="number" id="input-notes" min="0" max="${notesDisp}" value="0">
+                <input type="number" id="input-notes" min="0" max="${notesDisp}" value="${preNotes}">
             </div>
             <div class="form-group device-item">
                 <label>Tablets (Máx: ${tabsDisp})</label>
-                <input type="number" id="input-tabs" min="0" max="${tabsDisp}" value="0">
+                <input type="number" id="input-tabs" min="0" max="${tabsDisp}" value="${preTabs}">
             </div>
             <div class="form-group device-item">
                 <label>Celulares (Máx: ${celsDisp})</label>
-                <input type="number" id="input-cels" min="0" max="${celsDisp}" value="0">
+                <input type="number" id="input-cels" min="0" max="${celsDisp}" value="${preCels}">
             </div>
         </div>
         
         ${checkboxFixo}
 
-        <button type="submit" style="width: 100%;">Confirmar Agendamento</button>
+        <button type="submit" style="width: 100%;">${agendamentoEmEdicao ? 'Salvar Alterações' : 'Confirmar Agendamento'}</button>
     `;
 
     ui.modal.classList.remove('hidden');
@@ -469,11 +533,21 @@ function abrirModalAgendamento(aula) {
 
 ui.btnCloseModal.addEventListener('click', () => {
     ui.modal.classList.add('hidden');
+    agendamentoEmEdicao = null;
 });
 
 ui.form.addEventListener('submit', async (e) => {
     e.preventDefault();
     
+    const qtdNotes = parseInt(document.getElementById('input-notes').value) || 0;
+    const qtdTabs = parseInt(document.getElementById('input-tabs').value) || 0;
+    const qtdCels = parseInt(document.getElementById('input-cels').value) || 0;
+
+    if (qtdNotes === 0 && qtdTabs === 0 && qtdCels === 0) {
+        alert("É necessário selecionar pelo menos 1 dispositivo (Notebook, Tablet ou Celular) para realizar o agendamento.");
+        return; // Interrompe a execução aqui
+    }
+
     const btn = ui.form.querySelector('button[type="submit"]');
     btn.disabled = true;
     btn.textContent = "Salvando...";
@@ -487,31 +561,50 @@ ui.form.addEventListener('submit', async (e) => {
         // Se for admin, pega o nome digitado. Se for professor, usa o nome do perfil logado.
         const nomeDoProfessor = isAdmin ? document.getElementById('input-prof-nome').value : currentUser.displayName;
 
-        // Criando o documento do agendamento
-        await addDoc(collection(db, "agendamentos"), {
+        const dadosAgendamento = {
             data: dataFormatada,
             isFixo: isFixoAdmin || false,
             aulaId: aulaSelecionada.id,
-            uid: currentUser.uid,
             professorNome: nomeDoProfessor,
             sala: document.getElementById('input-sala').value,
             componente: document.getElementById('input-comp').value,
             salaMaker: document.getElementById('input-maker').checked,
-            notebooks: parseInt(document.getElementById('input-notes').value) || 0,
-            tablets: parseInt(document.getElementById('input-tabs').value) || 0,
-            celulares: parseInt(document.getElementById('input-cels').value) || 0,
-            criadoEm: new Date().toISOString()
-        });
+            notebooks: qtdNotes,
+            tablets: qtdTabs,
+            celulares: qtdCels
+        };
+
+        if (agendamentoEmEdicao) {
+            // Atualiza o documento existente
+            dadosAgendamento.editadoEm = new Date().toISOString();
+            await updateDoc(doc(db, "agendamentos", agendamentoEmEdicao.id), dadosAgendamento);
+        } else {
+            // Cria um novo documento
+            dadosAgendamento.uid = currentUser.uid;
+            dadosAgendamento.criadoEm = new Date().toISOString();
+            await addDoc(collection(db, "agendamentos"), dadosAgendamento);
+        }
 
         ui.modal.classList.add('hidden');
+        agendamentoEmEdicao = null; // Limpa estado de edição após sucesso
     } catch (error) {
         console.error("Erro ao agendar:", error);
         alert("Erro ao realizar o agendamento. Tente novamente.");
     } finally {
         btn.disabled = false;
-        btn.textContent = "Confirmar Agendamento";
+        btn.textContent = agendamentoEmEdicao ? "Salvar Alterações" : "Confirmar Agendamento";
     }
 });
+
+// Expondo função global para o botão de editar renderizado dinamicamente
+window.editarAgendamento = function(idAgendamento) {
+    const agendamento = agendamentosDoDia.find(a => a.id === idAgendamento);
+    if (!agendamento) return;
+
+    const aula = CONFIG_SISTEMA.aulas.find(a => a.id === agendamento.aulaId);
+    agendamentoEmEdicao = agendamento;
+    abrirModalAgendamento(aula);
+}
 
 // Expondo função para o escopo global (já que o botão X é renderizado via string no innerHTML)
 window.deletarAgendamento = async function(idAgendamento, btnElement) {

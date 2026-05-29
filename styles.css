@@ -103,7 +103,7 @@ header {
     background: var(--card-bg);
     border-radius: 10px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    overflow: hidden;
+    overflow-x: auto; /* Permite rolagem horizontal em telas pequenas */
 }
 
 table {
@@ -196,6 +196,14 @@ button:disabled {
 }
 .btn-delete:hover:not(:disabled) { background: #c5221f; }
 
+.btn-edit {
+    background: #fbbc05;
+    color: #333;
+    padding: 5px 10px;
+    font-size: 12px;
+}
+.btn-edit:hover:not(:disabled) { background: #e0a800; }
+
 /* Modal */
 .modal {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -247,4 +255,92 @@ textarea {
 /* Classe fundamental para esconder a tela inativa */
 .hidden {
     display: none !important;
+}
+
+/* =========================================================================
+   RESPONSIVIDADE (MOBILE & TABLETS)
+========================================================================= */
+@media (max-width: 768px) {
+    /* Centraliza e empilha itens do cabeçalho */
+    header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+    }
+    
+    .user-profile {
+        flex-direction: column;
+    }
+    
+    header > div:last-child {
+        flex-wrap: wrap;
+        justify-content: center;
+        width: 100%;
+    }
+    
+    /* Transforma a grade de dispositivos em coluna única no form */
+    .devices-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    /* Remove a rolagem horizontal e o fundo padrão do container */
+    .table-container {
+        background: transparent;
+        box-shadow: none;
+    }
+
+    /* Transforma a tabela em layout de blocos verticais */
+    table, thead, tbody, th, td, tr {
+        display: block;
+        width: 100%;
+    }
+
+    thead {
+        display: none; /* Oculta os cabeçalhos originais das colunas */
+    }
+
+    tr {
+        background: var(--card-bg);
+        margin-bottom: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        border: 1px solid var(--border-color);
+    }
+
+    td:first-child {
+        background-color: #f8f9fa;
+        border-radius: 10px 10px 0 0;
+        text-align: center;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    td:last-child {
+        padding-top: 0;
+        border-bottom: none;
+    }
+
+    /* Botão "+" passa a ocupar a largura toda no final do bloco */
+    .btn-add {
+        width: 30px;
+        border-radius: 5px;
+        height: 50px;
+        font-size: 28px;
+    }
+
+    /* Adapta os cards de agendamento dentro da tabela */
+    .booking-card {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .booking-card > div:last-child {
+        width: 100%;
+        justify-content: flex-end;
+        margin-top: 10px;
+    }
+
+    .date-navigator h2 {
+        font-size: 18px;
+    }
 }
