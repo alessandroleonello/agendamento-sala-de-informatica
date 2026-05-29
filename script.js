@@ -657,7 +657,7 @@ function abrirModalAgendamento(aula) {
             <label>Componente Curricular</label>
             <select id="input-comp" required>
                 <option value="">Selecione...</option>
-                ${CONFIG_SISTEMA.componentes.map(c => `<option value="${c}" ${c === preComp ? 'selected' : ''}>${c}</option>`).join('')}
+                ${[...CONFIG_SISTEMA.componentes].sort((a, b) => a.localeCompare(b, 'pt-BR')).map(c => `<option value="${c}" ${c === preComp ? 'selected' : ''}>${c}</option>`).join('')}
             </select>
         </div>
         
