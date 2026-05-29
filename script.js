@@ -728,15 +728,44 @@ ui.form.addEventListener('submit', async (e) => {
         return;
     }
 
+    let acaoEdicaoFixo = null;
+    if (agendamentoEmEdicao && agendamentoEmEdicao.isFixo) {
+        const result = await Swal.fire({
+            title: 'Editar Agendamento Fixo',
+            text: 'Este é um agendamento FIXO. O que deseja alterar?',
+            icon: 'question',
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: 'Apenas Hoje',
+            denyButtonText: 'Todas as Repetições',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (result.isConfirmed) {
+            acaoEdicaoFixo = 'hoje';
+        } else if (result.isDenied) {
+            acaoEdicaoFixo = 'todas';
+        } else {
+            btn.disabled = false;
+            btn.textContent = "Salvar Alterações";
+            return; // Interrompe caso ele desista de editar
+        }
+    }
+
     try {
         ui.loadingOverlay.classList.remove('hidden');
         ui.loadingText.textContent = "Verificando disponibilidade...";
 
         // Se o admin marcou como fixo, a data vira "FIXO-diaDaSemana". Senão, vira a data normal.
         const checkFixo = document.getElementById('input-fixo');
-        const isFixoAdmin = isAdmin && checkFixo && checkFixo.checked;
-        const dataFormatada = isFixoAdmin ? `FIXO-${currentDate.getDay()}` : formatDateParaBanco(currentDate);
+        let isFixoAdmin = isAdmin && checkFixo && checkFixo.checked;
+        let dataFormatada = isFixoAdmin ? `FIXO-${currentDate.getDay()}` : formatDateParaBanco(currentDate);
         
+        if (acaoEdicaoFixo === 'hoje') {
+            isFixoAdmin = false;
+            dataFormatada = formatDateParaBanco(currentDate);
+        }
+
         // DOUBLE CHECK: Busca TODOS os agendamentos do dia atual para validar múltiplas aulas de uma vez
         const q = query(
             collection(db, "agendamentos"), 
@@ -781,21 +810,45 @@ ui.form.addEventListener('submit', async (e) => {
         const nomeDoProfessor = isAdmin ? document.getElementById('input-prof-nome').value : currentUser.displayName;
 
         if (agendamentoEmEdicao) {
-            // Atualiza o documento existente
-            const dadosAgendamento = {
-                data: dataFormatada,
-                isFixo: isFixoAdmin || false,
-                aulaId: aulasSelecionadasIds[0],
-                professorNome: nomeDoProfessor,
-                sala: salaEscolhida,
-                componente: document.getElementById('input-comp').value,
-                salaMaker: makerEscolhido,
-                notebooks: qtdNotes,
-                tablets: qtdTabs,
-                celulares: qtdCels,
-                editadoEm: new Date().toISOString()
-            };
-            await updateDoc(doc(db, "agendamentos", agendamentoEmEdicao.id), dadosAgendamento);
+            if (acaoEdicaoFixo === 'hoje') {
+                // 1. Adiciona exceção no original para ele não aparecer hoje
+                await updateDoc(doc(db, "agendamentos", agendamentoEmEdicao.id), {
+                    excecoes: arrayUnion(formatDateParaBanco(currentDate))
+                });
+                
+                // 2. Cria um novo agendamento não-fixo apenas para hoje
+                const dadosAgendamento = {
+                    data: dataFormatada,
+                    isFixo: false,
+                    aulaId: aulasSelecionadasIds[0],
+                    professorNome: nomeDoProfessor,
+                    sala: salaEscolhida,
+                    componente: document.getElementById('input-comp').value,
+                    salaMaker: makerEscolhido,
+                    notebooks: qtdNotes,
+                    tablets: qtdTabs,
+                    celulares: qtdCels,
+                    uid: currentUser.uid,
+                    criadoEm: new Date().toISOString()
+                };
+                await addDoc(collection(db, "agendamentos"), dadosAgendamento);
+            } else {
+                // Atualiza o documento existente normalmente
+                const dadosAgendamento = {
+                    data: dataFormatada,
+                    isFixo: isFixoAdmin || false,
+                    aulaId: aulasSelecionadasIds[0],
+                    professorNome: nomeDoProfessor,
+                    sala: salaEscolhida,
+                    componente: document.getElementById('input-comp').value,
+                    salaMaker: makerEscolhido,
+                    notebooks: qtdNotes,
+                    tablets: qtdTabs,
+                    celulares: qtdCels,
+                    editadoEm: new Date().toISOString()
+                };
+                await updateDoc(doc(db, "agendamentos", agendamentoEmEdicao.id), dadosAgendamento);
+            }
         } else {
             // Cria um novo documento PARA CADA aula selecionada
             const promises = aulasSelecionadasIds.map(aulaId => {
