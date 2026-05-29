@@ -589,7 +589,25 @@ function abrirModalAgendamento(aula) {
     let tabsDisp = CONFIG_SISTEMA.dispositivosMax.tablets - tabsUsados;
     let celsDisp = CONFIG_SISTEMA.dispositivosMax.celulares - celsUsados;
 
-    ui.modalAulaInfo.innerHTML = `${agendamentoEmEdicao ? 'Editando' : 'Agendando'} para: <strong>${aula.nome} (${aula.horario})</strong> no dia ${currentDate.toLocaleDateString()}`;
+    ui.modalAulaInfo.innerHTML = `${agendamentoEmEdicao ? 'Editando agendamento' : 'Criando agendamento(s)'} para o dia <strong>${currentDate.toLocaleDateString()}</strong>`;
+
+    // Se estiver editando, bloqueia a seleção. Se for um novo, exibe a grade de checkboxes para as aulas.
+    const checkboxesAulas = agendamentoEmEdicao 
+        ? `<div class="form-group">
+            <label>Aula</label>
+            <input type="text" value="${aula.nome} (${aula.horario})" disabled style="background: #e9ecef; cursor: not-allowed;">
+           </div>`
+        : `<div class="form-group">
+            <label>Aulas para agendar simultaneamente</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #f8f9fa; padding: 10px; border-radius: 5px; border: 1px solid var(--border-color);">
+                ${CONFIG_SISTEMA.aulas.map(a => `
+                    <label style="display: flex; align-items: center; gap: 5px; font-weight: normal; font-size: 13px; cursor: pointer; margin: 0;">
+                        <input type="checkbox" name="aulas-multi" value="${a.id}" ${a.id === aula.id ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0;">
+                        ${a.nome}
+                    </label>
+                `).join('')}
+            </div>
+           </div>`;
 
     const preFixo = agendamentoEmEdicao && agendamentoEmEdicao.isFixo ? 'checked' : '';
     const preProf = agendamentoEmEdicao ? agendamentoEmEdicao.professorNome : currentUser.displayName;
@@ -621,6 +639,7 @@ function abrirModalAgendamento(aula) {
 
     // Construindo o formulário dinamicamente para ter os selects sempre atualizados
     ui.form.innerHTML = `
+        ${checkboxesAulas}
         ${inputNomeProfessor}
         <div class="form-group">
             <label>Sala de Destino</label>
@@ -694,6 +713,21 @@ ui.form.addEventListener('submit', async (e) => {
     btn.disabled = true;
     btn.textContent = "Salvando...";
 
+    let aulasSelecionadasIds = [];
+    if (agendamentoEmEdicao) {
+        aulasSelecionadasIds.push(aulaSelecionada.id);
+    } else {
+        const checkboxes = document.querySelectorAll('input[name="aulas-multi"]:checked');
+        checkboxes.forEach(cb => aulasSelecionadasIds.push(cb.value));
+    }
+
+    if (aulasSelecionadasIds.length === 0) {
+        Swal.fire("Atenção", "Selecione pelo menos uma aula.", "warning");
+        btn.disabled = false;
+        btn.textContent = agendamentoEmEdicao ? "Salvar Alterações" : "Confirmar Agendamento";
+        return;
+    }
+
     try {
         ui.loadingOverlay.classList.remove('hidden');
         ui.loadingText.textContent = "Verificando disponibilidade...";
@@ -703,65 +737,85 @@ ui.form.addEventListener('submit', async (e) => {
         const isFixoAdmin = isAdmin && checkFixo && checkFixo.checked;
         const dataFormatada = isFixoAdmin ? `FIXO-${currentDate.getDay()}` : formatDateParaBanco(currentDate);
         
-        // DOUBLE CHECK: Busca os dados fresquinhos do servidor para evitar Conflito de Milissegundos
+        // DOUBLE CHECK: Busca TODOS os agendamentos do dia atual para validar múltiplas aulas de uma vez
         const q = query(
             collection(db, "agendamentos"), 
-            where("data", "in", [dataFormatada, `FIXO-${currentDate.getDay()}`]),
-            where("aulaId", "==", aulaSelecionada.id)
+            where("data", "in", [dataFormatada, `FIXO-${currentDate.getDay()}`])
         );
         const serverSnap = await getDocs(q);
+        const agendamentosServidor = serverSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
-        let serverNotes = 0, serverTabs = 0, serverCels = 0;
-        let serverMaker = false, serverSalas = [];
-
-        serverSnap.forEach(docSnap => {
-            if (agendamentoEmEdicao && docSnap.id === agendamentoEmEdicao.id) return;
-            const ag = docSnap.data();
-            if (ag.isFixo && ag.excecoes && ag.excecoes.includes(formatDateParaBanco(currentDate))) return;
-            
-            serverNotes += (ag.notebooks || 0);
-            serverTabs += (ag.tablets || 0);
-            serverCels += (ag.celulares || 0);
-            serverSalas.push(ag.sala);
-            if (ag.salaMaker) serverMaker = true;
-        });
-
         const salaEscolhida = document.getElementById('input-sala').value;
         const makerEscolhido = document.getElementById('input-maker').checked;
 
-        if (serverSalas.includes(salaEscolhida)) throw new Error(`A sala ${salaEscolhida} acabou de ser reservada por outro professor!`);
-        if (makerEscolhido && serverMaker) throw new Error("A Sala Maker acabou de ser reservada por outro professor!");
-        if (serverNotes + qtdNotes > CONFIG_SISTEMA.dispositivosMax.notebooks) throw new Error(`Notebooks esgotados! Restam apenas ${CONFIG_SISTEMA.dispositivosMax.notebooks - serverNotes} disponíveis.`);
-        if (serverTabs + qtdTabs > CONFIG_SISTEMA.dispositivosMax.tablets) throw new Error(`Tablets esgotados! Restam apenas ${CONFIG_SISTEMA.dispositivosMax.tablets - serverTabs} disponíveis.`);
-        if (serverCels + qtdCels > CONFIG_SISTEMA.dispositivosMax.celulares) throw new Error(`Celulares esgotados! Restam apenas ${CONFIG_SISTEMA.dispositivosMax.celulares - serverCels} disponíveis.`);
+        // Valida disponibilidade para CADA aula selecionada individualmente
+        for (const aulaId of aulasSelecionadasIds) {
+            let serverNotes = 0, serverTabs = 0, serverCels = 0;
+            let serverMaker = false, serverSalas = [];
+            
+            const agsAula = agendamentosServidor.filter(ag => ag.aulaId === aulaId);
+            
+            agsAula.forEach(ag => {
+                if (agendamentoEmEdicao && ag.id === agendamentoEmEdicao.id) return;
+                if (ag.isFixo && ag.excecoes && ag.excecoes.includes(formatDateParaBanco(currentDate))) return;
+                
+                serverNotes += (ag.notebooks || 0);
+                serverTabs += (ag.tablets || 0);
+                serverCels += (ag.celulares || 0);
+                serverSalas.push(ag.sala);
+                if (ag.salaMaker) serverMaker = true;
+            });
+
+            const nomeAula = CONFIG_SISTEMA.aulas.find(a => a.id === aulaId)?.nome || aulaId;
+
+            if (serverSalas.includes(salaEscolhida)) throw new Error(`A sala ${salaEscolhida} já está reservada por outro professor na ${nomeAula}!`);
+            if (makerEscolhido && serverMaker) throw new Error(`A Sala Maker já está reservada por outro professor na ${nomeAula}!`);
+            if (serverNotes + qtdNotes > CONFIG_SISTEMA.dispositivosMax.notebooks) throw new Error(`Notebooks esgotados na ${nomeAula}! Restam apenas ${CONFIG_SISTEMA.dispositivosMax.notebooks - serverNotes}.`);
+            if (serverTabs + qtdTabs > CONFIG_SISTEMA.dispositivosMax.tablets) throw new Error(`Tablets esgotados na ${nomeAula}! Restam apenas ${CONFIG_SISTEMA.dispositivosMax.tablets - serverTabs}.`);
+            if (serverCels + qtdCels > CONFIG_SISTEMA.dispositivosMax.celulares) throw new Error(`Celulares esgotados na ${nomeAula}! Restam apenas ${CONFIG_SISTEMA.dispositivosMax.celulares - serverCels}.`);
+        }
 
         ui.loadingText.textContent = "Salvando agendamento...";
 
         // Se for admin, pega o nome digitado. Se for professor, usa o nome do perfil logado.
         const nomeDoProfessor = isAdmin ? document.getElementById('input-prof-nome').value : currentUser.displayName;
 
-        const dadosAgendamento = {
-            data: dataFormatada,
-            isFixo: isFixoAdmin || false,
-            aulaId: aulaSelecionada.id,
-            professorNome: nomeDoProfessor,
-            sala: document.getElementById('input-sala').value,
-            componente: document.getElementById('input-comp').value,
-            salaMaker: document.getElementById('input-maker').checked,
-            notebooks: qtdNotes,
-            tablets: qtdTabs,
-            celulares: qtdCels
-        };
-
         if (agendamentoEmEdicao) {
             // Atualiza o documento existente
-            dadosAgendamento.editadoEm = new Date().toISOString();
+            const dadosAgendamento = {
+                data: dataFormatada,
+                isFixo: isFixoAdmin || false,
+                aulaId: aulasSelecionadasIds[0],
+                professorNome: nomeDoProfessor,
+                sala: salaEscolhida,
+                componente: document.getElementById('input-comp').value,
+                salaMaker: makerEscolhido,
+                notebooks: qtdNotes,
+                tablets: qtdTabs,
+                celulares: qtdCels,
+                editadoEm: new Date().toISOString()
+            };
             await updateDoc(doc(db, "agendamentos", agendamentoEmEdicao.id), dadosAgendamento);
         } else {
-            // Cria um novo documento
-            dadosAgendamento.uid = currentUser.uid;
-            dadosAgendamento.criadoEm = new Date().toISOString();
-            await addDoc(collection(db, "agendamentos"), dadosAgendamento);
+            // Cria um novo documento PARA CADA aula selecionada
+            const promises = aulasSelecionadasIds.map(aulaId => {
+                const dadosAgendamento = {
+                    data: dataFormatada,
+                    isFixo: isFixoAdmin || false,
+                    aulaId: aulaId,
+                    professorNome: nomeDoProfessor,
+                    sala: salaEscolhida,
+                    componente: document.getElementById('input-comp').value,
+                    salaMaker: makerEscolhido,
+                    notebooks: qtdNotes,
+                    tablets: qtdTabs,
+                    celulares: qtdCels,
+                    uid: currentUser.uid,
+                    criadoEm: new Date().toISOString()
+                };
+                return addDoc(collection(db, "agendamentos"), dadosAgendamento);
+            });
+            await Promise.all(promises);
         }
 
         ui.modal.classList.add('hidden');
