@@ -1,0 +1,250 @@
+:root {
+    --primary-color: #4285F4;
+    --primary-hover: #3367D6;
+    --danger-color: #ea4335;
+    --bg-color: #f4f7f6;
+    --card-bg: #ffffff;
+    --text-dark: #333333;
+    --border-color: #e0e0e0;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg-color);
+    margin: 0;
+    color: var(--text-dark);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Tela de Login Centralizada */
+#login-container {
+    background-color: var(--card-bg);
+    padding: 40px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    text-align: center;
+    max-width: 400px;
+    width: 100%;
+    margin: auto;
+}
+
+/* Tela Inicial (Dashboard) */
+#home-container, #admin-container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--card-bg);
+    padding: 15px 25px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.user-profile img {
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    object-fit: cover;
+}
+
+.user-profile h3 { margin: 0; font-size: 18px; }
+.badge { 
+    font-size: 12px; 
+    background: #e0e0e0; 
+    padding: 3px 8px; 
+    border-radius: 12px; 
+    font-weight: bold;
+}
+.badge.admin { background: #fbbc05; color: #333; }
+
+/* Navegação de Data */
+.date-navigator {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 420px;
+    margin: 0 auto 20px auto;
+}
+
+.date-navigator h2 { margin: 0; font-size: 22px; text-transform: capitalize; text-align: center; width: 100%; }
+.nav-btn {
+    background: white;
+    color: var(--primary-color);
+    border: 1px solid var(--border-color);
+    padding: 8px 16px;
+    font-size: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+/* Tabela de Agendamentos */
+.table-container {
+    background: var(--card-bg);
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    overflow: hidden;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 15px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+th { background-color: #f8f9fa; font-weight: 600; }
+td:first-child { font-weight: bold; white-space: nowrap; width: 15%;}
+td:last-child { width: 10%; text-align: center; }
+
+/* Efeito visual de carregamento suave da tabela */
+.loading-table {
+    opacity: 0.5;
+    pointer-events: none;
+    transition: opacity 0.2s ease-in-out;
+}
+
+/* Cards de Agendamento dentro da tabela */
+.booking-card {
+    background: #f8f9fa;
+    border-left: 4px solid var(--primary-color);
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.booking-info strong { display: block; font-size: 15px; margin-bottom: 4px;}
+.booking-details { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 5px; }
+.detail-badge {
+    background: #e8eaed;
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.detail-badge.maker { background: #dcece3; color: #0d652d; border: 1px solid #a7d7b9;}
+.detail-badge.fixo { background: #fff3cd; color: #856404; border: 1px solid #ffeeba;}
+
+
+button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: bold;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+button:hover:not(:disabled) {
+    background-color: var(--primary-hover);
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.btn-secondary { background-color: #f1f3f4; color: #3c4043; border: 1px solid #dadce0; }
+.btn-secondary:hover:not(:disabled) { background-color: #e8eaed; }
+
+.btn-add {
+    background: var(--primary-color);
+    border-radius: 50%;
+    width: 35px;
+    height: 35px;
+    font-size: 20px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-delete {
+    background: var(--danger-color);
+    padding: 5px 10px;
+    font-size: 12px;
+}
+.btn-delete:hover:not(:disabled) { background: #c5221f; }
+
+/* Modal */
+.modal {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: var(--card-bg);
+    padding: 30px;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 500px;
+    position: relative;
+}
+
+.close-btn {
+    position: absolute; top: 15px; right: 20px;
+    font-size: 24px; cursor: pointer; color: #666;
+}
+
+.form-group { margin-bottom: 15px; }
+.form-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px;}
+.form-group select, .form-group input[type="number"], .form-group input[type="text"] {
+    width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 5px; font-size: 14px;
+}
+
+.checkbox-group { display: flex; align-items: center; gap: 10px; margin: 20px 0; }
+.checkbox-group input { width: 18px; height: 18px; cursor: pointer;}
+
+.devices-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px;
+    background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);
+}
+.device-item label { font-size: 12px; color: #555;}
+
+/* Elementos do Painel Admin */
+textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 14px;
+    resize: vertical;
+}
+
+/* Classe fundamental para esconder a tela inativa */
+.hidden {
+    display: none !important;
+}

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agendamento Sala de Informática</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Tela de Login -->
+    <div id="login-container">
+        <h2>Agendamento - Sala de Informática</h2>
+        <p>Faça login com sua conta do Google para continuar</p>
+        <button id="google-login-btn">Entrar com o Google</button>
+    </div>
+
+    <!-- Tela Inicial (Oculta por padrão) -->
+    <div id="home-container" class="hidden">
+        <header>
+            <div class="user-profile">
+                <img id="user-photo" src="" alt="Foto de Perfil" class="hidden">
+                <div>
+                    <h3 id="user-name">Carregando...</h3>
+                    <span id="user-role" class="badge">Professor</span>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button id="btn-print" class="btn-secondary">🖨️ Imprimir</button>
+                <button id="btn-admin-panel" class="btn-secondary hidden">⚙️ Configurações</button>
+                <button id="logout-btn" class="btn-secondary">Sair</button>
+            </div>
+        </header>
+
+        <main>
+            <div class="date-navigator">
+                <button id="prev-day-btn" class="nav-btn">&lt;</button>
+                <h2 id="current-date-display">--/--/----</h2>
+                <button id="next-day-btn" class="nav-btn">&gt;</button>
+            </div>
+
+            <div class="table-container">
+                <table id="schedule-table">
+                    <thead>
+                        <tr>
+                            <th>Aulas e Horários</th>
+                            <th>Agendamentos da Aula</th>
+                            <th>Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="schedule-tbody">
+                        <!-- O conteúdo será gerado dinamicamente via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Tela do Administrador (Configurações) -->
+    <div id="admin-container" class="hidden">
+        <header>
+            <h2>⚙️ Painel de Configurações do Sistema</h2>
+            <button id="btn-admin-back" class="btn-secondary">Voltar ao Agendamento</button>
+        </header>
+        <main style="background: var(--card-bg); padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-top: 20px;">
+            
+            <div class="admin-section">
+                <h3>Estoque de Dispositivos (Total Máximo)</h3>
+                <div class="devices-grid">
+                    <div class="form-group"><label>Notebooks</label><input type="number" id="admin-notes" min="0"></div>
+                    <div class="form-group"><label>Tablets</label><input type="number" id="admin-tabs" min="0"></div>
+                    <div class="form-group"><label>Celulares</label><input type="number" id="admin-cels" min="0"></div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Salas Disponíveis <small style="font-weight:normal; color:#666;">(Insira uma por linha)</small></label>
+                <textarea id="admin-salas" rows="4"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Componentes Curriculares <small style="font-weight:normal; color:#666;">(Insira um por linha)</small></label>
+                <textarea id="admin-componentes" rows="4"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Aulas e Horários <small style="font-weight:normal; color:#666;">(Formato: <strong>Nome da Aula ; Horário</strong> - uma por linha. Ex: 1ª Aula ; 07:00 - 07:50)</small></label>
+                <textarea id="admin-aulas" rows="6"></textarea>
+            </div>
+            <button id="btn-admin-save" style="width: 100%; font-size: 16px; padding: 15px;">Salvar Configurações no Banco de Dados</button>
+            
+            <div class="admin-section" style="margin-top: 40px;">
+                <h3>Gerenciar Professores (Usuários)</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr><th>Professor</th><th>Email</th><th>Permissão</th><th>Ação</th></tr>
+                        </thead>
+                        <tbody id="admin-users-tbody">
+                            <!-- Usuários injetados via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal de Agendamento -->
+    <div id="booking-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-btn" id="close-modal-btn">&times;</span>
+            <h3>Novo Agendamento</h3>
+            <p id="modal-aula-info" style="color: #666; margin-bottom: 20px;"></p>
+            
+            <form id="booking-form">
+                <!-- Os campos serão injetados dinamicamente via JS -->
+            </form>
+        </div>
+    </div>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
