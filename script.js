@@ -1,37 +1,24 @@
-// Importando funções do SDK Modular do Firebase
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, where, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+// Importando módulos locais (Modularização)
+import { auth, db, provider } from './firebase-setup.js';
+import { ui } from './ui.js';
+import './admin.js'; // Inicializa os eventos do painel de administração
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDGoFC1kncfLymg7ioHTNTM88mTeTV-2zA",
-  authDomain: "site-institucional-e-blog.firebaseapp.com",
-  databaseURL: "https://site-institucional-e-blog-default-rtdb.firebaseio.com",
-  projectId: "site-institucional-e-blog",
-  storageBucket: "site-institucional-e-blog.firebasestorage.app",
-  messagingSenderId: "359592005429",
-  appId: "1:359592005429:web:35fc6c2e299c8790a8067c"
-};
+// Importando funções específicas do Firebase que usamos neste arquivo
+import { signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-// Inicializando o Firebase e Autenticação
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const provider = new GoogleAuthProvider();
-
-// Força o Firebase a salvar a sessão no armazenamento local do navegador
-setPersistence(auth, browserLocalPersistence).catch((error) => {
-    console.error("Erro ao configurar persistência de login:", error);
-});
 
 /* =========================================================================
    CONFIGURAÇÕES GERAIS E ESTADOS DO SISTEMA
 ========================================================================= */
 // TODO: Adicione aqui o SEU e-mail para ter permissões de excluir qualquer agendamento
-const ADMIN_EMAILS = ["alessandroleonello2@gmail.com"]; 
+export const ADMIN_EMAILS = ["alessandroleonello2@gmail.com"]; 
 
 // Variável que vai receber os dados do Firebase
-let CONFIG_SISTEMA = null;
+export let CONFIG_SISTEMA = null;
+export function setConfigSistema(novaConfig) {
+    CONFIG_SISTEMA = novaConfig;
+}
 
 let currentUser = null;
 let isAdmin = false;
@@ -40,6 +27,7 @@ let todosAgendamentos = []; // Guarda TODOS os agendamentos na memória
 let agendamentosDoDia = []; // Guarda os agendamentos do dia atual
 let aulaSelecionada = null; // Guarda a aula sendo agendada no modal
 let agendamentoEmEdicao = null; // Guarda o agendamento caso seja edição
+let unsubscribeAgendamentos = null; // Controle do listener do Firebase para evitar vazamento de memória
 
 /* =========================================================================
    CARREGAMENTO DE CONFIGURAÇÕES DO BANCO
@@ -75,44 +63,9 @@ async function carregarConfiguracoes() {
         console.error("Erro ao buscar configurações do sistema:", error);
         // Se der erro de permissão, usa o padrão para não quebrar a tela
         CONFIG_SISTEMA = configPadrao;
-        alert("Erro de permissão no Firebase. As configurações padrão foram carregadas. Verifique as Regras de Segurança do Firestore.");
+        Swal.fire("Aviso", "Erro de permissão no Firebase. As configurações padrão foram carregadas. Verifique as Regras de Segurança do Firestore.", "warning");
     }
 }
-
-/* =========================================================================
-   CAPTURA DE ELEMENTOS DO DOM
-========================================================================= */
-const ui = {
-    login: document.getElementById('login-container'),
-    home: document.getElementById('home-container'),
-    btnGoogle: document.getElementById('google-login-btn'),
-    btnLogout: document.getElementById('logout-btn'),
-    userName: document.getElementById('user-name'),
-    userPhoto: document.getElementById('user-photo'),
-    userRole: document.getElementById('user-role'),
-    dateDisplay: document.getElementById('current-date-display'),
-    btnPrint: document.getElementById('btn-print'),
-    btnPrevDate: document.getElementById('prev-day-btn'),
-    btnNextDate: document.getElementById('next-day-btn'),
-    tbody: document.getElementById('schedule-tbody'),
-    modal: document.getElementById('booking-modal'),
-    btnCloseModal: document.getElementById('close-modal-btn'),
-    form: document.getElementById('booking-form'),
-    modalAulaInfo: document.getElementById('modal-aula-info'),
-    modalTitle: document.getElementById('modal-title'),
-    // Admin Elements
-    adminContainer: document.getElementById('admin-container'),
-    btnAdminPanel: document.getElementById('btn-admin-panel'),
-    btnAdminBack: document.getElementById('btn-admin-back'),
-    btnAdminSave: document.getElementById('btn-admin-save'),
-    adminNotes: document.getElementById('admin-notes'),
-    adminTabs: document.getElementById('admin-tabs'),
-    adminCels: document.getElementById('admin-cels'),
-    adminSalas: document.getElementById('admin-salas'),
-    adminComps: document.getElementById('admin-componentes'),
-    adminAulas: document.getElementById('admin-aulas'),
-    adminUsersTbody: document.getElementById('admin-users-tbody')
-};
 
 /* =========================================================================
    AUTENTICAÇÃO
@@ -130,16 +83,180 @@ ui.btnGoogle.addEventListener('click', async () => {
         await signInWithPopup(auth, provider);
     } catch (error) {
         console.error("Erro no login:", error);
-        alert("Falha no login: " + error.message);
+        Swal.fire("Erro", "Falha no login: " + error.message, "error");
         btn.textContent = "Entrar com o Google";
         btn.disabled = false;
     }
 });
 ui.btnLogout.addEventListener('click', () => signOut(auth));
 
-// Aciona o recurso nativo de impressão/geração de PDF do navegador
-ui.btnPrint.addEventListener('click', () => {
-    window.print();
+// Substitui a impressão da tela padrão por um relatório formal
+ui.btnPrint.addEventListener('click', gerarRelatorioPDF);
+
+function gerarRelatorioPDF() {
+    ui.loadingOverlay.classList.remove('hidden');
+    ui.loadingText.textContent = "Gerando documento para impressão...";
+
+    const dataFormatada = currentDate.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    
+    let html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Relatório de Agendamentos - ${dataFormatada}</title>
+            <style>
+                @page { margin: 15mm; size: A4 portrait; }
+                body { font-family: 'Segoe UI', Arial, sans-serif; color: #333; margin: 0; }
+                .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+                .header img { max-width: 120px; margin-bottom: 10px; }
+                .header h1 { margin: 0; font-size: 20px; text-transform: uppercase; color: #222; }
+                .header p { margin: 5px 0 0 0; font-size: 14px; color: #555; text-transform: capitalize; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+                th, td { border: 1px solid #666; padding: 8px 10px; text-align: left; }
+                th { background-color: #e9ecef; font-weight: bold; text-transform: uppercase; font-size: 11px; }
+                .aula-nome { font-weight: bold; font-size: 14px;}
+                .livre { color: #888; font-style: italic; text-align: center; }
+                .footer { margin-top: 40px; text-align: center; font-size: 11px; color: #777; }
+                .assinatura { margin-top: 60px; width: 250px; border-top: 1px solid #000; margin-left: auto; margin-right: auto; text-align: center; padding-top: 5px; font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <img src="https://i.ibb.co/jPCXD3h1/pei-lurdita.jpg" alt="Logo da Escola">
+                <h1>Agendamento - Sala de Informática</h1>
+                <p>${dataFormatada}</p>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th width="15%">Aula / Horário</th>
+                        <th width="25%">Professor</th>
+                        <th width="30%">Sala / Componente</th>
+                        <th width="30%">Recursos Utilizados</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    CONFIG_SISTEMA.aulas.forEach(aula => {
+        const ags = agendamentosDoDia.filter(a => a.aulaId === aula.id);
+        // Ordena para que a Sala Maker apareça primeiro, mantendo o padrão da tela principal
+        ags.sort((a, b) => (b.salaMaker ? 1 : 0) - (a.salaMaker ? 1 : 0));
+
+        if (ags.length === 0) {
+            html += `
+                <tr>
+                    <td><span class="aula-nome">${aula.nome}</span><br><small>${aula.horario}</small></td>
+                    <td colspan="3" class="livre">Nenhum agendamento (Livre)</td>
+                </tr>
+            `;
+        } else {
+            ags.forEach((ag, index) => {
+                const profNome = escapeHTML(ag.professorNome);
+                const sala = escapeHTML(ag.sala);
+                const comp = escapeHTML(ag.componente);
+                
+                let recursos = [];
+                if(ag.salaMaker) recursos.push("🛠 Sala Maker");
+                if(ag.notebooks > 0) recursos.push(`💻 ${ag.notebooks} Note`);
+                if(ag.tablets > 0) recursos.push(`📱 ${ag.tablets} Tab`);
+                if(ag.celulares > 0) recursos.push(`📱 ${ag.celulares} Cel`);
+                if(ag.isFixo) recursos.push("🔁 Fixo");
+                
+                const recursosStr = recursos.length > 0 ? recursos.join(" | ") : "Apenas a sala";
+
+                if (index === 0) {
+                    html += `
+                        <tr>
+                            <td rowspan="${ags.length}"><span class="aula-nome">${aula.nome}</span><br><small>${aula.horario}</small></td>
+                            <td><strong>${profNome}</strong></td>
+                            <td>${sala}<br><small>${comp}</small></td>
+                            <td>${recursosStr}</td>
+                        </tr>
+                    `;
+                } else {
+                    html += `
+                        <tr>
+                            <td><strong>${profNome}</strong></td>
+                            <td>${sala}<br><small>${comp}</small></td>
+                            <td>${recursosStr}</td>
+                        </tr>
+                    `;
+                }
+            });
+        }
+    });
+
+    html += `
+                </tbody>
+            </table>
+            <div class="assinatura">
+                Assinatura do Responsável
+            </div>
+            <div class="footer">
+                Documento gerado pelo Sistema de Agendamento em ${new Date().toLocaleString('pt-BR')}
+            </div>
+        </body>
+        </html>
+    `;
+
+    // Criar uma janela oculta no corpo do site e injetar o nosso HTML formatado nela
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    // Aguarda um segundo e meio para garantir que o computador fez o download da imagem do logo antes de imprimir
+    setTimeout(() => {
+        ui.loadingOverlay.classList.add('hidden');
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        
+        // Remove a janela oculta depois que a impressão termina ou é fechada
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+        }, 10000);
+    }, 1500);
+}
+
+// Exporta os agendamentos da tela para o formato Excel (CSV)
+ui.btnExportCsv.addEventListener('click', () => {
+    let csvContent = "Aula;Horario;Professor;Sala;Componente;Recursos Utilizados\n";
+
+    CONFIG_SISTEMA.aulas.forEach(aula => {
+        const ags = agendamentosDoDia.filter(a => a.aulaId === aula.id);
+        ags.sort((a, b) => (b.salaMaker ? 1 : 0) - (a.salaMaker ? 1 : 0));
+
+        if (ags.length === 0) {
+            csvContent += `${aula.nome};${aula.horario};Livre;;;\n`;
+        } else {
+            ags.forEach(ag => {
+                let recursos = [];
+                if(ag.salaMaker) recursos.push("Sala Maker");
+                if(ag.notebooks > 0) recursos.push(`${ag.notebooks} Note`);
+                if(ag.tablets > 0) recursos.push(`${ag.tablets} Tab`);
+                if(ag.celulares > 0) recursos.push(`${ag.celulares} Cel`);
+                if(ag.isFixo) recursos.push("Fixo");
+                
+                const recursosStr = recursos.length > 0 ? recursos.join(" | ") : "Apenas a sala";
+                csvContent += `${aula.nome};${aula.horario};${ag.professorNome};${ag.sala};${ag.componente};${recursosStr}\n`;
+            });
+        }
+    });
+
+    // Adiciona o BOM do UTF-8 para o Excel abrir com acentuação correta
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `agendamentos_${formatDateParaBanco(currentDate)}.csv`;
+    link.click();
 });
 
 onAuthStateChanged(auth, async (user) => {
@@ -149,7 +266,7 @@ onAuthStateChanged(auth, async (user) => {
         // Validação de e-mail institucional
         const isInstitucional = user.email.endsWith('@prof.educacao.sp.gov.br');
         if (!isInstitucional && !isAdmin) {
-            alert("Acesso Negado!\n\nEste sistema é de uso restrito.\nPor favor, faça login utilizando o seu e-mail institucional (@prof.educacao.sp.gov.br).");
+            Swal.fire("Acesso Negado!", "Este sistema é de uso restrito. Por favor, faça login utilizando o seu e-mail institucional (@prof.educacao.sp.gov.br).", "error");
             await signOut(auth); // Desloga o usuário imediatamente
             return; // Interrompe o fluxo e impede o acesso ao sistema
         }
@@ -202,6 +319,10 @@ onAuthStateChanged(auth, async (user) => {
         atualizarDataUI();
         iniciarListenerAgendamentos();
     } else {
+        if (unsubscribeAgendamentos) {
+            unsubscribeAgendamentos();
+            unsubscribeAgendamentos = null;
+        }
         currentUser = null;
         ui.login.classList.remove('hidden');
         ui.home.classList.add('hidden');
@@ -211,106 +332,20 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 /* =========================================================================
-   PAINEL DE ADMINISTRAÇÃO
-========================================================================= */
-ui.btnAdminPanel.addEventListener('click', () => {
-    ui.home.classList.add('hidden');
-    ui.adminContainer.classList.remove('hidden');
-
-    // Preenche os campos com a configuração atual
-    ui.adminNotes.value = CONFIG_SISTEMA.dispositivosMax.notebooks;
-    ui.adminTabs.value = CONFIG_SISTEMA.dispositivosMax.tablets;
-    ui.adminCels.value = CONFIG_SISTEMA.dispositivosMax.celulares;
-    ui.adminSalas.value = CONFIG_SISTEMA.salas.join('\n');
-    ui.adminComps.value = CONFIG_SISTEMA.componentes.join('\n');
-    ui.adminAulas.value = CONFIG_SISTEMA.aulas.map(a => `${a.nome} ; ${a.horario}`).join('\n');
-
-    // Carrega a lista de professores que já usaram o sistema
-    carregarUsuariosParaAdmin();
-});
-
-ui.btnAdminBack.addEventListener('click', () => {
-    ui.adminContainer.classList.add('hidden');
-    ui.home.classList.remove('hidden');
-});
-
-ui.btnAdminSave.addEventListener('click', async () => {
-    const btn = ui.btnAdminSave;
-    btn.textContent = "Salvando...";
-    btn.disabled = true;
-
-    const novasSalas = ui.adminSalas.value.split('\n').map(s => s.trim()).filter(s => s !== '');
-    const novosComps = ui.adminComps.value.split('\n').map(c => c.trim()).filter(c => c !== '');
-    const novasAulasStr = ui.adminAulas.value.split('\n').map(a => a.trim()).filter(a => a !== '');
-    
-    const novasAulas = novasAulasStr.map((linha, i) => {
-        const partes = linha.split(';');
-        return { id: `aula_${i+1}`, nome: (partes[0] || `Aula ${i+1}`).trim(), horario: (partes[1] || '').trim() };
-    });
-
-    const novaConfig = {
-        salas: novasSalas,
-        componentes: novosComps,
-        aulas: novasAulas,
-        dispositivosMax: {
-            notebooks: parseInt(ui.adminNotes.value) || 0,
-            tablets: parseInt(ui.adminTabs.value) || 0,
-            celulares: parseInt(ui.adminCels.value) || 0
-        }
-    };
-
-    try {
-        // Sobrescreve (ou cria) o documento "geral" na coleção "configuracoes"
-        await setDoc(doc(db, "configuracoes", "geral"), novaConfig);
-        CONFIG_SISTEMA = novaConfig; // Atualiza localmente
-        alert("Configurações salvas com sucesso!");
-        renderizarTabela(); // Atualiza a tabela imediatamente
-    } catch (error) {
-        console.error("Erro ao salvar config:", error);
-        alert("Erro ao salvar configurações.");
-    } finally {
-        btn.textContent = "Salvar Configurações no Banco de Dados";
-        btn.disabled = false;
-    }
-});
-
-async function carregarUsuariosParaAdmin() {
-    ui.adminUsersTbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#666;">Carregando usuários...</td></tr>';
-    try {
-        const usersSnap = await getDocs(collection(db, "usuarios"));
-        ui.adminUsersTbody.innerHTML = '';
-        
-        usersSnap.forEach(docSnap => {
-            const u = docSnap.data();
-            const tr = document.createElement('tr');
-            const isSuperAdmin = ADMIN_EMAILS.includes(u.email);
-            
-            let acaoHtml = '';
-            if (isSuperAdmin) {
-                acaoHtml = '<span style="color: #999; font-size:12px;">Super Admin (Fixo)</span>';
-            } else if (u.role === 'admin') {
-                acaoHtml = `<button class="btn-secondary" style="font-size:12px; padding:5px 10px;" onclick="alterarNivelUsuario('${docSnap.id}', 'user', this)">Rebaixar para Professor</button>`;
-            } else {
-                acaoHtml = `<button class="btn-secondary" style="font-size:12px; padding:5px 10px;" onclick="alterarNivelUsuario('${docSnap.id}', 'admin', this)">Promover a Admin</button>`;
-            }
-
-            tr.innerHTML = `
-                <td style="display:flex; align-items:center; gap:10px;"><img src="${u.foto}" width="30" height="30" style="border-radius:50%; object-fit:cover;"> ${u.nome}</td>
-                <td>${u.email}</td>
-                <td><span class="badge ${u.role === 'admin' ? 'admin' : ''}">${u.role === 'admin' ? 'Administrador' : 'Professor'}</span></td>
-                <td>${acaoHtml}</td>
-            `;
-            ui.adminUsersTbody.appendChild(tr);
-        });
-    } catch (error) {
-        console.error("Erro ao carregar usuários:", error);
-        ui.adminUsersTbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Erro ao carregar usuários. Verifique as regras do Firebase.</td></tr>';
-    }
-}
-
-/* =========================================================================
    NAVEGAÇÃO DE DATAS E RENDERIZAÇÃO
 ========================================================================= */
+
+// Prevenção contra ataques XSS (Cross-Site Scripting)
+export function escapeHTML(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 function formatDateParaBanco(date) {
     // Retorna "YYYY-MM-DD" no fuso local
     const ano = date.getFullYear();
@@ -322,26 +357,57 @@ function formatDateParaBanco(date) {
 function atualizarDataUI() {
     const opcoes = { weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit' };
     ui.dateDisplay.textContent = currentDate.toLocaleDateString('pt-BR', opcoes);
+    // Mantém o DatePicker sincronizado com as setinhas de navegação
+    ui.datePicker.value = formatDateParaBanco(currentDate);
 }
 
 ui.btnPrevDate.addEventListener('click', () => {
     currentDate.setDate(currentDate.getDate() - 1);
     atualizarDataUI();
-    carregarAgendamentosDoDia();
+    iniciarListenerAgendamentos();
 });
 
 ui.btnNextDate.addEventListener('click', () => {
     currentDate.setDate(currentDate.getDate() + 1);
     atualizarDataUI();
-    carregarAgendamentosDoDia();
+    iniciarListenerAgendamentos();
+});
+
+ui.datePicker.addEventListener('change', (e) => {
+    if (!e.target.value) return;
+    // O valor do input date é sempre "YYYY-MM-DD"
+    const [ano, mes, dia] = e.target.value.split('-');
+    // Evita problema de fuso horário passando o ano, mês (0-11) e dia pro construtor do JS
+    currentDate = new Date(ano, mes - 1, dia);
+    
+    atualizarDataUI();
+    iniciarListenerAgendamentos();
+});
+
+ui.filterMyBookings.addEventListener('change', () => {
+    renderizarTabela();
 });
 
 /* =========================================================================
    BANCO DE DADOS E TABELA
 ========================================================================= */
 function iniciarListenerAgendamentos() {
-    // Baixa todos os agendamentos e os mantém atualizados em tempo real na memória
-    onSnapshot(collection(db, "agendamentos"), (snapshot) => {
+    if (unsubscribeAgendamentos) {
+        unsubscribeAgendamentos(); // Cancela a escuta do dia anterior para economizar banda
+    }
+
+    const dataString = formatDateParaBanco(currentDate);
+    const dataFixo = `FIXO-${currentDate.getDay()}`;
+
+    const q = query(
+        collection(db, "agendamentos"), 
+        where("data", "in", [dataString, dataFixo])
+    );
+
+    ui.tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding: 30px; color: #666;">Buscando agendamentos da data...</td></tr>';
+
+    // Baixa APENAS os agendamentos da data que está na tela no momento
+    unsubscribeAgendamentos = onSnapshot(q, (snapshot) => {
         todosAgendamentos = [];
         snapshot.forEach((doc) => {
             todosAgendamentos.push({ id: doc.id, ...doc.data() });
@@ -366,8 +432,11 @@ function carregarAgendamentosDoDia() {
     renderizarTabela();
 }
 
-function renderizarTabela() {
+export function renderizarTabela() {
     ui.tbody.innerHTML = '';
+    const mostrarApenasMeus = ui.filterMyBookings.checked;
+
+    let linhasExibidas = 0;
 
     CONFIG_SISTEMA.aulas.forEach(aula => {
         const tr = document.createElement('tr');
@@ -381,10 +450,25 @@ function renderizarTabela() {
         const tdAgendamentos = document.createElement('td');
         const agendamentosDestaAula = agendamentosDoDia.filter(ag => ag.aulaId === aula.id);
         
-        // Ordena para que a Sala Maker apareça sempre primeiro
-        agendamentosDestaAula.sort((a, b) => (b.salaMaker ? 1 : 0) - (a.salaMaker ? 1 : 0));
+        let agsParaMostrar = agendamentosDestaAula;
+        if (mostrarApenasMeus) {
+            agsParaMostrar = agsParaMostrar.filter(ag => ag.uid === currentUser.uid);
+            
+            // Se o filtro estiver ativo e o professor não tiver agendamento nesta aula, oculta a linha inteira
+            if (agsParaMostrar.length === 0) return;
+        }
 
-        agendamentosDestaAula.forEach(ag => {
+        linhasExibidas++;
+
+        // Ordena para que a Sala Maker apareça sempre primeiro
+        agsParaMostrar.sort((a, b) => (b.salaMaker ? 1 : 0) - (a.salaMaker ? 1 : 0));
+
+        agsParaMostrar.forEach(ag => {
+            // Limpando os textos para evitar injeção de códigos maliciosos
+            const profNomeSeguro = escapeHTML(ag.professorNome);
+            const salaSegura = escapeHTML(ag.sala);
+            const compSeguro = escapeHTML(ag.componente);
+
             const card = document.createElement('div');
             card.className = 'booking-card';
             
@@ -399,9 +483,9 @@ function renderizarTabela() {
 
             card.innerHTML = `
                 <div class="booking-info">
-                    <strong>${ag.professorNome} ${ag.isFixo ? '🔁' : ''}</strong>
+                    <strong>${profNomeSeguro} ${ag.isFixo ? '🔁' : ''}</strong>
                     <div class="booking-details">
-                        <span class="detail-badge">${ag.sala} - ${ag.componente}</span>
+                        <span class="detail-badge">${salaSegura} - ${compSeguro}</span>
                         ${ag.salaMaker ? `<span class="detail-badge maker">🛠 Sala Maker</span>` : ''}
                         ${ag.isFixo ? `<span class="detail-badge fixo">Fixo</span>` : ''}
                         ${devicesHtml}
@@ -415,7 +499,7 @@ function renderizarTabela() {
             tdAgendamentos.appendChild(card);
         });
         
-        if(agendamentosDestaAula.length === 0) {
+        if(agsParaMostrar.length === 0) {
             tdAgendamentos.innerHTML = '<span style="color:#999; font-style:italic">Livre</span>';
         }
         tr.appendChild(tdAgendamentos);
@@ -434,6 +518,10 @@ function renderizarTabela() {
         tr.appendChild(tdAcao);
         ui.tbody.appendChild(tr);
     });
+
+    if (mostrarApenasMeus && linhasExibidas === 0) {
+        ui.tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding: 30px; color: #666; font-style: italic;">Você não possui nenhum agendamento neste dia.</td></tr>';
+    }
 }
 
 /* =========================================================================
@@ -451,6 +539,9 @@ function abrirModalAgendamento(aula) {
     let notesUsados = agsDaAula.reduce((acc, ag) => acc + (ag.notebooks || 0), 0);
     let tabsUsados = agsDaAula.reduce((acc, ag) => acc + (ag.tablets || 0), 0);
     let celsUsados = agsDaAula.reduce((acc, ag) => acc + (ag.celulares || 0), 0);
+    
+    // Mapeia quais salas físicas já foram escolhidas nesta aula
+    let salasOcupadas = agsDaAula.map(ag => ag.sala);
 
     // Se estiver editando, devolvemos os dispositivos/sala do agendamento atual para a conta de disponibilidade
     if (agendamentoEmEdicao) {
@@ -458,6 +549,10 @@ function abrirModalAgendamento(aula) {
         tabsUsados -= (agendamentoEmEdicao.tablets || 0);
         celsUsados -= (agendamentoEmEdicao.celulares || 0);
         makerOcupada = agsDaAula.some(ag => ag.id !== agendamentoEmEdicao.id && ag.salaMaker === true);
+        
+        // Remove a sala que estamos editando da lista de salas ocupadas para permitir mantê-la
+        const indexSala = salasOcupadas.indexOf(agendamentoEmEdicao.sala);
+        if (indexSala > -1) salasOcupadas.splice(indexSala, 1);
     }
 
     let notesDisp = CONFIG_SISTEMA.dispositivosMax.notebooks - notesUsados;
@@ -501,7 +596,12 @@ function abrirModalAgendamento(aula) {
             <label>Sala de Destino</label>
             <select id="input-sala" required>
                 <option value="">Selecione a sala...</option>
-                ${CONFIG_SISTEMA.salas.map(s => `<option value="${s}" ${s === preSala ? 'selected' : ''}>${s}</option>`).join('')}
+                ${CONFIG_SISTEMA.salas.map(s => {
+                    const isOcupada = salasOcupadas.includes(s);
+                    const selected = s === preSala ? 'selected' : '';
+                    const disabled = isOcupada ? 'disabled' : '';
+                    return `<option value="${s}" ${selected} ${disabled}>${isOcupada ? s + ' (Já ocupada)' : s}</option>`;
+                }).join('')}
             </select>
         </div>
         <div class="form-group">
@@ -556,7 +656,7 @@ ui.form.addEventListener('submit', async (e) => {
     const qtdCels = parseInt(document.getElementById('input-cels').value) || 0;
 
     if (qtdNotes === 0 && qtdTabs === 0 && qtdCels === 0) {
-        alert("É necessário selecionar pelo menos 1 dispositivo (Notebook, Tablet ou Celular) para realizar o agendamento.");
+        Swal.fire("Atenção", "É necessário selecionar pelo menos 1 dispositivo (Notebook, Tablet ou Celular) para realizar o agendamento.", "warning");
         return; // Interrompe a execução aqui
     }
 
@@ -565,11 +665,48 @@ ui.form.addEventListener('submit', async (e) => {
     btn.textContent = "Salvando...";
 
     try {
+        ui.loadingOverlay.classList.remove('hidden');
+        ui.loadingText.textContent = "Verificando disponibilidade...";
+
         // Se o admin marcou como fixo, a data vira "FIXO-diaDaSemana". Senão, vira a data normal.
         const checkFixo = document.getElementById('input-fixo');
         const isFixoAdmin = isAdmin && checkFixo && checkFixo.checked;
         const dataFormatada = isFixoAdmin ? `FIXO-${currentDate.getDay()}` : formatDateParaBanco(currentDate);
         
+        // DOUBLE CHECK: Busca os dados fresquinhos do servidor para evitar Conflito de Milissegundos
+        const q = query(
+            collection(db, "agendamentos"), 
+            where("data", "in", [dataFormatada, `FIXO-${currentDate.getDay()}`]),
+            where("aulaId", "==", aulaSelecionada.id)
+        );
+        const serverSnap = await getDocs(q);
+        
+        let serverNotes = 0, serverTabs = 0, serverCels = 0;
+        let serverMaker = false, serverSalas = [];
+
+        serverSnap.forEach(docSnap => {
+            if (agendamentoEmEdicao && docSnap.id === agendamentoEmEdicao.id) return;
+            const ag = docSnap.data();
+            if (ag.isFixo && ag.excecoes && ag.excecoes.includes(formatDateParaBanco(currentDate))) return;
+            
+            serverNotes += (ag.notebooks || 0);
+            serverTabs += (ag.tablets || 0);
+            serverCels += (ag.celulares || 0);
+            serverSalas.push(ag.sala);
+            if (ag.salaMaker) serverMaker = true;
+        });
+
+        const salaEscolhida = document.getElementById('input-sala').value;
+        const makerEscolhido = document.getElementById('input-maker').checked;
+
+        if (serverSalas.includes(salaEscolhida)) throw new Error(`A sala ${salaEscolhida} acabou de ser reservada por outro professor!`);
+        if (makerEscolhido && serverMaker) throw new Error("A Sala Maker acabou de ser reservada por outro professor!");
+        if (serverNotes + qtdNotes > CONFIG_SISTEMA.dispositivosMax.notebooks) throw new Error(`Notebooks esgotados! Restam apenas ${CONFIG_SISTEMA.dispositivosMax.notebooks - serverNotes} disponíveis.`);
+        if (serverTabs + qtdTabs > CONFIG_SISTEMA.dispositivosMax.tablets) throw new Error(`Tablets esgotados! Restam apenas ${CONFIG_SISTEMA.dispositivosMax.tablets - serverTabs} disponíveis.`);
+        if (serverCels + qtdCels > CONFIG_SISTEMA.dispositivosMax.celulares) throw new Error(`Celulares esgotados! Restam apenas ${CONFIG_SISTEMA.dispositivosMax.celulares - serverCels} disponíveis.`);
+
+        ui.loadingText.textContent = "Salvando agendamento...";
+
         // Se for admin, pega o nome digitado. Se for professor, usa o nome do perfil logado.
         const nomeDoProfessor = isAdmin ? document.getElementById('input-prof-nome').value : currentUser.displayName;
 
@@ -601,8 +738,9 @@ ui.form.addEventListener('submit', async (e) => {
         agendamentoEmEdicao = null; // Limpa estado de edição após sucesso
     } catch (error) {
         console.error("Erro ao agendar:", error);
-        alert("Erro ao realizar o agendamento. Tente novamente.");
+        Swal.fire("Erro!", error.message || "Erro ao realizar o agendamento. Tente novamente.", "error");
     } finally {
+        ui.loadingOverlay.classList.add('hidden');
         btn.disabled = false;
         btn.textContent = agendamentoEmEdicao ? "Salvar Alterações" : "Confirmar Agendamento";
     }
@@ -624,9 +762,18 @@ window.deletarAgendamento = async function(idAgendamento, btnElement) {
     if (!agendamento) return;
 
     if (agendamento.isFixo) {
-        const resp = prompt("Este é um agendamento FIXO.\n\nDigite 1 para cancelar APENAS a aula de hoje.\nDigite 2 para cancelar TODAS as repetições futuras e passadas.\n\n(Deixe em branco ou clique em Cancelar para sair)");
+        const result = await Swal.fire({
+            title: 'Agendamento Fixo',
+            text: 'Este é um agendamento FIXO. O que deseja cancelar?',
+            icon: 'question',
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: 'Apenas Hoje',
+            denyButtonText: 'Todas as Repetições',
+            cancelButtonText: 'Sair'
+        });
         
-        if (resp === '1') {
+        if (result.isConfirmed) { // Clicou em "Apenas Hoje"
             btnElement.textContent = "...";
             btnElement.disabled = true;
             try {
@@ -637,17 +784,33 @@ window.deletarAgendamento = async function(idAgendamento, btnElement) {
                 });
             } catch (error) {
                 console.error("Erro ao criar exceção:", error);
-                alert("Erro ao cancelar o agendamento para o dia de hoje.");
+                Swal.fire("Erro", "Erro ao cancelar o agendamento para o dia de hoje.", "error");
                 btnElement.textContent = "X";
                 btnElement.disabled = false;
             }
-        } else if (resp === '2') {
-            if (confirm("Tem certeza que deseja APAGAR COMPLETAMENTE esse agendamento do sistema?")) {
+        } else if (result.isDenied) { // Clicou em "Todas as Repetições"
+            const deleteResult = await Swal.fire({
+                title: 'Atenção',
+                text: 'Tem certeza que deseja APAGAR COMPLETAMENTE esse agendamento do sistema?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Sim, apagar tudo',
+                cancelButtonText: 'Cancelar'
+            });
+            if (deleteResult.isConfirmed) {
                 executarDelecao(idAgendamento, btnElement);
             }
         }
     } else {
-        if (confirm("Tem certeza que deseja cancelar este agendamento?")) {
+        const result = await Swal.fire({
+            title: 'Cancelar agendamento?',
+            text: "Tem certeza que deseja cancelar este agendamento?",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sim, cancelar',
+            cancelButtonText: 'Voltar'
+        });
+        if (result.isConfirmed) {
             executarDelecao(idAgendamento, btnElement);
         }
     }
@@ -660,21 +823,8 @@ async function executarDelecao(idAgendamento, btnElement) {
         await deleteDoc(doc(db, "agendamentos", idAgendamento));
     } catch(error) {
         console.error("Erro ao deletar:", error);
-        alert("Erro ao cancelar agendamento.");
+        Swal.fire("Erro", "Erro ao cancelar agendamento.", "error");
         btnElement.textContent = "X";
-        btnElement.disabled = false;
-    }
-}
-
-window.alterarNivelUsuario = async function(uid, novoRole, btnElement) {
-    btnElement.disabled = true;
-    btnElement.textContent = "...";
-    try {
-        await updateDoc(doc(db, "usuarios", uid), { role: novoRole });
-        carregarUsuariosParaAdmin(); // Recarrega a tabela visualmente após sucesso
-    } catch (error) {
-        console.error("Erro ao atualizar nível:", error);
-        alert("Erro ao alterar permissão.");
         btnElement.disabled = false;
     }
 }

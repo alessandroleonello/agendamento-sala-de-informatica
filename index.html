@@ -5,10 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agendamento Sala de Informática</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Importando SweetAlert2 para alertas mais bonitos -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 <body>
     <!-- Tela de Login -->
     <div id="login-container">
+        <img src="https://i.ibb.co/jPCXD3h1/pei-lurdita.jpg" alt="Logo da Escola" class="app-logo">
         <h2>Agendamento - Sala de Informática</h2>
         <p>Faça login com sua conta do Google para continuar</p>
         <p style="color: var(--danger-color); font-size: 13px; font-weight: bold; margin-bottom: 20px;">⚠️ Acesso restrito a contas institucionais (@prof.educacao.sp.gov.br)</p>
@@ -18,15 +21,19 @@
     <!-- Tela Inicial (Oculta por padrão) -->
     <div id="home-container" class="hidden">
         <header>
-            <div class="user-profile">
-                <img id="user-photo" src="" alt="Foto de Perfil" class="hidden">
-                <div>
-                    <h3 id="user-name">Carregando...</h3>
-                    <span id="user-role" class="badge">Professor</span>
+            <div class="header-left">
+                <img src="https://i.ibb.co/jPCXD3h1/pei-lurdita.jpg" alt="Logo da Escola" class="app-logo-small">
+                <div class="user-profile">
+                    <img id="user-photo" src="" alt="Foto de Perfil" class="hidden">
+                    <div>
+                        <h3 id="user-name">Carregando...</h3>
+                        <span id="user-role" class="badge">Professor</span>
+                    </div>
                 </div>
             </div>
             <div style="display: flex; gap: 10px;">
                 <button id="btn-print" class="btn-secondary">🖨️ Imprimir</button>
+                <button id="btn-export-csv" class="btn-secondary">📊 Excel</button>
                 <button id="btn-admin-panel" class="btn-secondary hidden">⚙️ Configurações</button>
                 <button id="logout-btn" class="btn-secondary">Sair</button>
             </div>
@@ -35,8 +42,16 @@
         <main>
             <div class="date-navigator">
                 <button id="prev-day-btn" class="nav-btn">&lt;</button>
-                <h2 id="current-date-display">--/--/----</h2>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 10px; flex-grow: 1;">
+                    <h2 id="current-date-display" style="width: auto;">--/--/----</h2>
+                    <input type="date" id="date-picker" class="nav-btn" style="padding: 5px; font-size: 14px; cursor: pointer; height: 35px; border-radius: 5px;">
+                </div>
                 <button id="next-day-btn" class="nav-btn">&gt;</button>
+            </div>
+
+            <div style="text-align: center; margin-bottom: 15px;">
+                <input type="checkbox" id="filter-my-bookings" style="cursor: pointer;">
+                <label for="filter-my-bookings" style="font-weight: bold; color: var(--primary-color); cursor: pointer;">Ver apenas meus agendamentos</label>
             </div>
 
             <div class="table-container">
@@ -114,6 +129,12 @@
                 <!-- Os campos serão injetados dinamicamente via JS -->
             </form>
         </div>
+    </div>
+
+    <!-- Spinner de Carregamento -->
+    <div id="loading-overlay" class="hidden">
+        <div class="spinner"></div>
+        <h3 id="loading-text" style="color: var(--primary-color);">Processando...</h3>
     </div>
 
     <script type="module" src="script.js"></script>
