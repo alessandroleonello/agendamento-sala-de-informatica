@@ -381,6 +381,9 @@ function renderizarTabela() {
         const tdAgendamentos = document.createElement('td');
         const agendamentosDestaAula = agendamentosDoDia.filter(ag => ag.aulaId === aula.id);
         
+        // Ordena para que a Sala Maker apareça sempre primeiro
+        agendamentosDestaAula.sort((a, b) => (b.salaMaker ? 1 : 0) - (a.salaMaker ? 1 : 0));
+
         agendamentosDestaAula.forEach(ag => {
             const card = document.createElement('div');
             card.className = 'booking-card';
