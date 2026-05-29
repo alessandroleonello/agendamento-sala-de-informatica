@@ -200,30 +200,52 @@ function gerarRelatorioPDF() {
         </html>
     `;
 
-    // Criar uma janela oculta no corpo do site e injetar o nosso HTML formatado nela
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = 'none';
-    document.body.appendChild(iframe);
+    // Em celulares, a impressão via iframe oculto costuma ser ignorada pelo navegador.
+    // Usamos a detecção do dispositivo para decidir se abrimos uma nova aba ou usamos o iframe.
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-    const doc = iframe.contentWindow.document;
-    doc.open();
-    doc.write(html);
-    doc.close();
+    if (isMobile) {
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.open();
+            printWindow.document.write(html);
+            printWindow.document.close();
+            
+            setTimeout(() => {
+                ui.loadingOverlay.classList.add('hidden');
+                printWindow.focus();
+                printWindow.print();
+            }, 1500);
+        } else {
+            ui.loadingOverlay.classList.add('hidden');
+            Swal.fire("Aviso", "Por favor, permita a abertura de pop-ups no seu navegador para visualizar o relatório.", "warning");
+        }
+    } else {
+        // Criar uma janela oculta no corpo do site para computadores
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'absolute';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = 'none';
+        document.body.appendChild(iframe);
 
-    // Aguarda um segundo e meio para garantir que o computador fez o download da imagem do logo antes de imprimir
-    setTimeout(() => {
-        ui.loadingOverlay.classList.add('hidden');
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        
-        // Remove a janela oculta depois que a impressão termina ou é fechada
+        const doc = iframe.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+
+        // Aguarda um segundo e meio para garantir que o computador fez o download da imagem do logo antes de imprimir
         setTimeout(() => {
-            document.body.removeChild(iframe);
-        }, 10000);
-    }, 1500);
+            ui.loadingOverlay.classList.add('hidden');
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            
+            // Remove a janela oculta depois que a impressão termina ou é fechada
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+            }, 10000);
+        }, 1500);
+    }
 }
 
 // Exporta os agendamentos da tela para o formato Excel (CSV)
